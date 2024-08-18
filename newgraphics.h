@@ -1,21 +1,88 @@
 #pragma once
-// Colors
-#define BLACK 0
-#define BLUE 1
-#define GREEN 2
-#define CYAN 3
-#define RED 4
-#define MAGENTA 5
-#define BROWN 6
-#define LIGHTGRAY 7
-#define DARKGRAY 8
-#define LIGHTBLUE 9
-#define LIGHTGREEN 10
-#define LIGHTCYAN 11
-#define LIGHTRED 12
-#define LIGHTMAGENTA 13
-#define YELLOW 14
-#define WHITE 15
+
+#define KEY_HOME        71
+#define KEY_UP          72
+#define KEY_PGUP        73
+#define KEY_LEFT        75
+#define KEY_CENTER      76
+#define KEY_RIGHT       77
+#define KEY_END         79
+#define KEY_DOWN        80
+#define KEY_PGDN        81
+#define KEY_INSERT      82
+#define KEY_DELETE      83
+#define KEY_F1          59
+#define KEY_F2          60
+#define KEY_F3          61
+#define KEY_F4          62
+#define KEY_F5          63
+#define KEY_F6          64
+#define KEY_F7          65
+#define KEY_F8          66
+#define KEY_F9          67
+
+// Line thickness settings
+#define NORM_WIDTH      1
+#define THICK_WIDTH     3
+
+// Character Size and Direction
+#define USER_CHAR_SIZE  0
+#define HORIZ_DIR       0
+#define VERT_DIR        1
+
+#define MAX_STACK_SIZE 10000
+
+// Constants for closegraph
+#define CURRENT_WINDOW -1
+#define ALL_WINDOWS -2
+#define NO_CURRENT_WINDOW -3
+
+// The standard Borland 16 colors
+#define MAXCOLORS       15
+enum colors {
+	BLACK, BLUE, GREEN, CYAN, RED, MAGENTA, BROWN, LIGHTGRAY, DARKGRAY,
+	LIGHTBLUE, LIGHTGREEN, LIGHTCYAN, LIGHTRED, LIGHTMAGENTA, YELLOW, WHITE
+};
+
+// The standard line styles
+enum line_styles { SOLID_LINE, DOTTED_LINE, CENTER_LINE, DASHED_LINE, USERBIT_LINE };
+
+// The standard fill styles
+enum fill_styles {
+	EMPTY_FILL, SOLID_FILL, LINE_FILL, LTSLASH_FILL, SLASH_FILL,
+	BKSLASH_FILL, LTBKSLASH_FILL, HATCH_FILL, XHATCH_FILL, INTERLEAVE_FILL,
+	WIDE_DOT_FILL, CLOSE_DOT_FILL, USER_FILL
+};
+
+// The various graphics drivers
+enum graphics_drivers {
+	DETECT, CGA, MCGA, EGA, EGA64, EGAMONO, IBM8514, HERCMONO,
+	ATT400, VGA, PC3270
+};
+
+// Various modes for each graphics driver
+enum graphics_modes {
+	CGAC0, CGAC1, CGAC2, CGAC3, CGAHI,
+	MCGAC0 = 0, MCGAC1, MCGAC2, MCGAC3, MCGAMED, MCGAHI,
+	EGALO = 0, EGAHI,
+	EGA64LO = 0, EGA64HI,
+	EGAMONOHI = 3,
+	HERCMONOHI = 0,
+	ATT400C0 = 0, ATT400C1, ATT400C2, ATT400C3, ATT400MED, ATT400HI,
+	VGALO = 0, VGAMED, VGAHI,
+	PC3270HI = 0,
+	IBM8514LO = 0, IBM8514HI
+};
+
+#define NO_CLICK        -1      
+enum graph_errors {
+	grInvalidVersion = -18, grInvalidDeviceNum = -15, grInvalidFontNum,
+	grInvalidFont, grIOerror, grError, grInvalidMode, grNoFontMem,
+	grFontNotFound, grNoFloodMem, grNoScanMem, grNoLoadMem,
+	grInvalidDriver, grFileNotFound, grNotDetected, grNoInitGraph,
+	grOk
+};
+
 
 #include <SDL.h>
 
@@ -27,6 +94,7 @@ extern "C" {
 
 	static SDL_Window* window;
 	static SDL_Renderer* renderer;
+	static SDL_Color fillColor;
 	static SDL_Color colors[16] = {
 		{0, 0, 0, 255},    // BLACK
 		{0, 0, 255, 255},  // BLUE
@@ -106,9 +174,6 @@ extern "C" {
 	int textheight(const char* text);
 	int textwidth(const char* text);
 
-
-
-
 	void detectgraph(int* gdriver, int* gmode) {
 		*gdriver = 0;
 		*gmode = 0;
@@ -161,18 +226,22 @@ extern "C" {
 	}
 
 	void circle(int x, int y, int radius) {
-		const int num_segments = 100;
+		const int num_segments = 108;
 		const double step = 2 * M_PI / num_segments;
-		SDL_Point points[num_segments];
+		SDL_Point points[num_segments + 1];  // +1 to include the closing point
 		for (int i = 0; i < num_segments; ++i) {
 			double angle = i * step;
 			points[i].x = static_cast<int>(x + radius * cos(angle));
 			points[i].y = static_cast<int>(y + radius * sin(angle));
 		}
+		// Closing the circle by connecting the last point to the first point
+		points[num_segments] = points[0];
+
 		SDL_SetRenderDrawColor(renderer, colors[_current_color].r, colors[_current_color].g, colors[_current_color].b, colors[_current_color].a);
-		SDL_RenderDrawLines(renderer, points, num_segments);
+		SDL_RenderDrawLines(renderer, points, num_segments + 1);  // Draw the complete circle
 		SDL_RenderPresent(renderer);
 	}
+
 
 	void cleardevice() {
 		SDL_SetRenderDrawColor(renderer, colors[_bk_color].r, colors[_bk_color].g, colors[_bk_color].b, colors[_bk_color].a
@@ -237,38 +306,24 @@ extern "C" {
 		delete[] sdl_points;
 	}
 
+
+	bool is_within_bounds(int x, int y, int width, int height) {
+		return (x >= 0 && x < width && y >= 0 && y < height);
+	}
+
+	bool colors_equal(const SDL_Color& c1, const SDL_Color& c2) {
+		return c1.r == c2.r && c1.g == c2.g && c1.b == c2.b && c1.a == c2.a;
+	}
+
 	void floodfill(int x, int y, int border_color) {
-		//// Flood fill using a basic algorithm; more complex implementations are possible
-		//SDL_Color target_color;
-		//SDL_GetRenderDrawColor(renderer, &target_color.r, &target_color.g, &target_color.b, &target_color.a);
-		//SDL_SetRenderDrawColor(renderer, colors[border_color].r, colors[border_color].g, colors[border_color].b, colors[border_color].a);
-
-		//// Stack-based flood fill
-		//std::vector<SDL_Point> stack;
-		//stack.push_back({ x, y });
-
-		//while (!stack.empty()) {
-		//    SDL_Point p = stack.back();
-		//    stack.pop_back();
-
-		//    SDL_SetRenderDrawColor(renderer, colors[_current_color].r, colors[_current_color].g, colors[_current_color].b, colors[_current_color].a);
-		//    SDL_RenderDrawPoint(renderer, p.x, p.y);
-
-		//    // Check surrounding pixels
-		//    if (p.x > 0 && SDL_GetRenderDrawColor(renderer, &target_color.r, &target_color.g, &target_color.b, &target_color.a) == target_color) {
-		//        stack.push_back({ p.x - 1, p.y });
-		//    }
-		//    if (p.y > 0 && SDL_GetRenderDrawColor(renderer, &target_color.r, &target_color.g, &target_color.b, &target_color.a) == target_color) {
-		//        stack.push_back({ p.x, p.y - 1 });
-		//    }
-		//    if (p.x < _window_width - 1 && SDL_GetRenderDrawColor(renderer, &target_color.r, &target_color.g, &target_color.b, &target_color.a) == target_color) {
-		//        stack.push_back({ p.x + 1, p.y });
-		//    }
-		//    if (p.y < _window_height - 1 && SDL_GetRenderDrawColor(renderer, &target_color.r, &target_color.g, &target_color.b, &target_color.a) == target_color) {
-		//        stack.push_back({ p.x, p.y + 1 });
-		//    }
-		//}
-		//SDL_RenderPresent(renderer);
+		int plotted_pixel = getpixel(x, y);
+		if (plotted_pixel != _current_color && plotted_pixel != border_color) {
+			putpixel(x, y, _current_color);
+			floodfill(x + 1, y, border_color);
+			floodfill(x, y + 1, border_color);
+			floodfill(x - 1, y, border_color);
+			floodfill(x, y - 1, border_color);
+		}
 	}
 
 	void line(int x1, int y1, int x2, int y2) {
@@ -364,11 +419,54 @@ extern "C" {
 		return _max_y;
 	}
 
+
 	int getpixel(int x, int y) {
-		Uint32 pixel;
-		SDL_RenderReadPixels(renderer, NULL, SDL_PIXELFORMAT_ARGB8888, &pixel, sizeof(pixel));
-		return pixel;
+		// Create a surface from the renderer
+		SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, _window_width, _window_height, 32, SDL_PIXELFORMAT_ARGB8888);
+		if (!surface) {
+			return -1;
+		}
+
+		// Read pixels from the renderer into the surface
+		if (SDL_RenderReadPixels(renderer, NULL, surface->format->format, surface->pixels, surface->pitch) != 0) {
+			SDL_FreeSurface(surface);
+			return -1;
+		}
+
+		// Lock the surface to access the pixel data
+		SDL_LockSurface(surface);
+
+		// Get the pixel data at (x, y)
+		Uint32* pixels = (Uint32*)surface->pixels;
+		Uint32 pixel_value = pixels[(y * surface->w) + x];
+
+		// Unlock the surface
+		SDL_UnlockSurface(surface);
+
+		// Convert the pixel value to an RGBA color
+		SDL_Color pixel_color;
+		SDL_GetRGBA(pixel_value, surface->format, &pixel_color.r, &pixel_color.g, &pixel_color.b, &pixel_color.a);
+
+		// Free the surface
+		SDL_FreeSurface(surface);
+
+		// Check if the colors array is valid
+		if (colors == nullptr) {
+			return -1;
+		}
+
+		// Loop through the colors array to find the closest match
+		for (int i = 0; i < 16; ++i) {
+			if (pixel_color.r == colors[i].r && pixel_color.g == colors[i].g && pixel_color.b == colors[i].b) {
+				return i;
+			}
+		}
+
+		// If no matching color is found
+		return -1;
 	}
+
+
 
 	int getx() {
 		return _current_x;
@@ -402,6 +500,11 @@ extern "C" {
 		SDL_RenderPresent(renderer);
 	}
 
+	inline void sector(int x, int y, int start_angle, int end_angle, int radius1, int radius2)
+	{
+
+	}
+
 	void fillrectangle(int left, int top, int right, int bottom) {
 		SDL_Rect rect = { left, top, right - left, bottom - top };
 		SDL_SetRenderDrawColor(renderer, colors[_current_color].r, colors[_current_color].g, colors[_current_color].b, colors[_current_color].a);
@@ -415,6 +518,47 @@ extern "C" {
 		SDL_RenderClear(renderer);
 		SDL_RenderPresent(renderer);
 	}
+
+	inline void setcolor(int color)
+	{
+		_current_color = color;
+		SDL_SetRenderDrawColor(renderer, colors[color].r, colors[color].g, colors[color].b, colors[color].a);
+		SDL_RenderPresent(renderer);
+	}
+
+	inline void setfillstyle(int pattern, int color)
+	{
+	}
+
+	inline void setlinestyle(int type, int thickness, int size)
+	{
+	}
+
+	inline void settextstyle(int font, int direction, int size)
+	{
+	}
+
+	inline void setviewport(int left, int top, int right, int bottom, int clip)
+	{
+		SDL_Rect clipRect = { left, top, right - left, bottom - top };
+		_window_width = right - left;
+		_window_height = bottom - top;
+		_max_x = _window_width - 1;
+		_max_y = _window_height - 1;
+		SDL_RenderSetClipRect(renderer, clip ? &clipRect : NULL);
+	}
+
+
+	inline int textheight(const char* text)
+	{
+		return 0;
+	}
+
+	inline int textwidth(const char* text)
+	{
+		return 0;
+	}
+
 
 
 #ifdef __cplusplus
