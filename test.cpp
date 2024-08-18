@@ -23,6 +23,8 @@ int main(int argc, char* argv[]) {
 	circle(70, 150, 50);
 	//floodfill(70, 150, GREEN);
 
+	setfillstyle(0, 0);
+
 	std::cin.get();
 	closegraph();
 	return 0;
